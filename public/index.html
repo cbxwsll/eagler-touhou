@@ -310,8 +310,8 @@
       boot.fail("javascript", reason && (reason.stack || reason.message) || String(reason || "Unhandled promise rejection"), "");
     });
     watchdog = setTimeout(function () {
-      if (!boot.done) boot.fail("watchdog", "12 秒内启动器没有完成初始化", "");
-    }, 12000);
+      if (!boot.done) boot.fail("watchdog", "30 秒内启动器没有完成初始化", "");
+    }, 30000);
   }());
   </script>
 </head>
@@ -767,8 +767,7 @@
     <div class="site-footer-divider" aria-hidden="true"></div>
     <div class="site-footer-inner">
       <p>由&nbsp;<a href="https://b23.tv/x3IIf0k" target="_blank" rel="noopener noreferrer">Ritosa</a>、<a href="https://github.com/Goan114" target="_blank" rel="noopener noreferrer">Goan114</a>、<a href="https://b23.tv/kmhLOQb" target="_blank" rel="noopener noreferrer">Grass1337</a>、<a href="https://github.com/Patchouli-CN" target="_blank" rel="noopener noreferrer">Patchouli-CN</a>、<a href="https://b23.tv/WOQhahY" target="_blank" rel="noopener noreferrer">SteinsGateON</a>&nbsp;倾力开发。</p>
-      <p>使用 GPL-3.0 license。<a href="https://github.com/YomotsuHisami/eagler-touhou" target="_blank" rel="noopener noreferrer">Github 仓库</a><i aria-hidden="true">/</i><a href="https://qm.qq.com/q/eeUrxIltug" target="_blank" rel="noopener noreferrer">QQ 群</a><i aria-hidden="true">/</i><button class="site-footer-link" id="donationOpen" type="button">捐赠以支持服务器运行</button></p>
-      <p class="site-footer-record"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">赣ICP备2025074288号-1</a></p>
+      <p>本站为第三方魔改部署：基于开源项目 <a href="https://github.com/YomotsuHisami/eagler-touhou" target="_blank" rel="noopener noreferrer">eagler-touhou（touhou.vip）</a> 修改，遵循 <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer">GPL-3.0</a> 协议（修改文件内均有“魔改”注释标明改动）。原作开发团队：Ritosa、Goan114、Grass1337、Patchouli-CN、SteinsGateON。魔改内容：联机人数动态拓宽（2 人起、无固定上限）、人机 AI 陪玩（5 级避弹/死亡炸弹/帮队友救援）、联机资源随人数增强。<a href="./touhou-magic-source.tar.gz">魔改版对应源代码下载（GPL-3.0）</a>。游戏原作及资源版权归上海爱丽丝幻乐团（ZUN）所有。</p>
     </div>
   </footer>
 
@@ -1132,6 +1131,28 @@
   </section>
   <noscript><p class="noscript-message">此启动器需要 JavaScript。你仍可查看<a href="faq.html">常见问题</a>和<a href="about.html">项目说明</a>。</p></noscript>
   <script>window.__eaglerBoot && window.__eaglerBoot.mark("app-module-request");</script>
-  <script type="module" src="app.js"></script>
+  <script>
+// 魔改: 断网弱网自动重试 bootloader（概率性断流场景下单次数传不可靠）
+window.addEventListener("error", function (e) {
+  try { fetch("./client-error", { method: "POST", body: JSON.stringify({ type: "error", msg: String(e.message || e.type), src: String((e.filename || "") + ":" + (e.lineno || "") + ":" + (e.colno || "")) }) }); } catch (_) {}
+});
+window.addEventListener("unhandledrejection", function (e) {
+  try { fetch("./client-error", { method: "POST", body: JSON.stringify({ type: "rejection", msg: String((e.reason && (e.reason.stack || e.reason.message)) || e.reason) }) }); } catch (_) {}
+});
+window.__eaglerBootRetry = 0;
+(function eaglerBoot() {
+  import("./app.js").catch(function () {
+    window.__eaglerBootRetry += 1;
+    if (window.__eaglerBootRetry > 15) {
+      var el = document.createElement("p");
+      el.style.cssText = "color:#e66;text-align:center;padding:2em;font-size:14px";
+      el.textContent = "\u7f51\u7edc\u4e0d\u7a33\u5b9a\uff0c\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u5237\u65b0\u9875\u9762\u91cd\u8bd5";
+      document.body.appendChild(el);
+      return;
+    }
+    setTimeout(eaglerBoot, 350);
+  });
+})();
+</script>
 </body>
 </html>

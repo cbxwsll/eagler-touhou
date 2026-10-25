@@ -47,6 +47,23 @@ function clearRelayRole(url: URL): void {
   for (const key of relayRoleParams) url.searchParams.delete(key);
 }
 
+export function effectiveNetplayRelayUrl(raw: string): string {
+  if (!raw) return raw;
+  try {
+    const parsed = new URL(raw);
+    // 魔改: 页面走 HTTPS（Caddy 统一入口）而 manifest 给的是明文 ws:// 时，
+    // 浏览器会按混合内容策略拦截；改经当前页面入口走 WSS，
+    // Caddy 按项目路径前缀反代到内网中继。
+    if (typeof location !== "undefined" && location.protocol === "https:" && parsed.protocol === "ws:") {
+      const base = location.pathname.substring(0, location.pathname.lastIndexOf("/") + 1);
+      return "wss://" + location.host + base;
+    }
+  } catch {
+    // 保持原值
+  }
+  return raw;
+}
+
 export function multiplayerTransportRoomId(product: string, roomCode: string): string {
   return `${product}-${roomCode}`;
 }

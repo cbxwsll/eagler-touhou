@@ -4,7 +4,7 @@ export interface MultiplayerRuntimeLoadout {
 }
 
 export interface MultiplayerRuntimeOptionConstraints {
-  playerCounts: readonly (2 | 3)[];
+  playerCounts: readonly (number)[];
   difficulties: readonly string[];
   loadouts: readonly MultiplayerRuntimeLoadout[];
 }
@@ -26,6 +26,7 @@ export interface MultiplayerRuntimeOptionInput {
   challengeMode?: boolean;
   iceServers: unknown;
   loadouts: MultiplayerRuntimeLoadout[];
+  bots?: { level: number; helpAlly: boolean }[];
 }
 
 export interface MultiplayerRuntimeOptions {
@@ -46,6 +47,7 @@ export interface MultiplayerRuntimeOptions {
   netplayChallengeMode?: boolean;
   netplayIceServers: unknown[];
   netplayLoadouts: MultiplayerRuntimeLoadout[];
+  netplayBots?: { level: number; helpAlly: boolean }[];
 }
 
 export function buildMultiplayerRuntimeOptions(
@@ -62,7 +64,7 @@ export function buildMultiplayerRuntimeOptions(
   if(input.challengeMode!==undefined && typeof input.challengeMode!=="boolean")throw new Error("挑战模式参数无效");
   const { player, playerCount, seed } = input;
   const spectator = input.spectator === true;
-  if (!constraints.playerCounts.includes(playerCount as 2 | 3) || (!spectator &&
+  if (!constraints.playerCounts.includes(playerCount as number) || (!spectator &&
       (typeof player !== "number" || !Number.isInteger(player) || player < 0 || player >= playerCount))) {
     throw new Error("LAN 玩家槽位无效");
   }
@@ -122,5 +124,6 @@ export function buildMultiplayerRuntimeOptions(
     netplaySpectatorCount: Math.max(0, Number(input.spectatorCount) || 0),
     netplayIceServers: Array.isArray(input.iceServers) ? input.iceServers : [],
     netplayLoadouts: loadouts,
+    netplayBots: Array.isArray(input.bots) ? input.bots.filter(b => b && Number.isInteger(b.level) && b.level >= 1 && b.level <= 5).map(b => ({ level: b.level, helpAlly: b.helpAlly === true })) : undefined,
   };
 }

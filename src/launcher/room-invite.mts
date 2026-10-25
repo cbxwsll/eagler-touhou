@@ -7,6 +7,11 @@
 
 export const ROOM_INVITE_KEY = "j";
 
+export interface RoomInviteBot {
+  l: number;
+  h: boolean;
+}
+
 export interface RoomInvite {
   /** Multiplayer product id, e.g. "th06mp". */
   g: string;
@@ -24,6 +29,7 @@ export interface RoomInvite {
   v?: "public" | "private";
   /** Initial disable-cheat-movement flag for a freshly created room. */
   c?: boolean;
+  b?: RoomInviteBot[];
 }
 
 function toBase64Url(value: string): string {
@@ -50,6 +56,7 @@ export function encodeRoomInvite(invite: RoomInvite): string {
   if (invite.d !== undefined) payload.d = invite.d;
   if (invite.v) payload.v = invite.v;
   if (invite.c) payload.c = true;
+  if (invite.b !== undefined) payload.b = invite.b;
   return toBase64Url(JSON.stringify(payload));
 }
 
@@ -70,6 +77,7 @@ export function decodeRoomInvite(token: string): RoomInvite | null {
       d: typeof record.d === "number" ? record.d : undefined,
       v: record.v === "public" || record.v === "private" ? record.v : undefined,
       c: record.c === true,
+      b: Array.isArray(record.b) ? record.b.filter(x => x && Number.isInteger(x.l) && x.l >= 1 && x.l <= 5).map(x => ({ l: x.l, h: x.h === true })) : undefined,
     };
   } catch {
     return null;

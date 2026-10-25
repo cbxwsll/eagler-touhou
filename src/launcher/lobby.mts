@@ -4,7 +4,7 @@ import { validateHostManifest } from "../contracts/host-manifest.mjs";
 import { getUiLocale, initUiLocale, t } from "./i18n.mjs";
 import type { UiMessageKey } from "./i18n.mjs";
 import { multiplayerMemberId, createMultiplayerIdentityStore, multiplayerControlMode } from "./multiplayer-identity.mjs";
-import { buildMultiplayerDirectoryRelayUrl, buildMultiplayerDiagnosticRelayUrl } from "./multiplayer-relay-url.mjs";
+import { buildMultiplayerDirectoryRelayUrl, buildMultiplayerDiagnosticRelayUrl, effectiveNetplayRelayUrl } from "./multiplayer-relay-url.mjs";
 import { createMultiplayerRoomSessionStore } from "./multiplayer-room-session.mjs";
 import { initializeGameLibrary } from "./game-library.mjs";
 import { createCustomSelectController } from "./custom-select.mjs";
@@ -17,7 +17,7 @@ import { createNetworkDiagnosticsController } from "./network-diagnostics.mjs";
 import { encodeRoomInvite, ROOM_INVITE_KEY } from "./room-invite.mjs";
 
 type Seat = { initial: string; ready: boolean; online: boolean; controlMode: ReturnType<typeof multiplayerControlMode> } | null;
-type Room = { product: MultiplayerProductId; code: string; capacity: 2 | 3; players: number; ready: number;
+type Room = { product: MultiplayerProductId; code: string; capacity: number; players: number; ready: number;
   difficulty: number; spectators: number; phase: string; joinable: boolean; seats: Seat[]; disableCheatMovement: boolean; challengeMode:boolean };
 type Mine = { product: MultiplayerProductId; code: string; recoveryToken: string } | null;
 type Connection = "loading" | "live" | "offline" | "unsupported" | "missing";
@@ -30,6 +30,9 @@ const memberId = multiplayerMemberId();
 const rowTemplate = el<HTMLTemplateElement>("roomRowTemplate");
 const dialog = el<HTMLDialogElement>("roomDialog");
 const gameSelect = el<HTMLSelectElement>("gameSelect");
+const botCountSelect = el<HTMLSelectElement>("botCountSelect");
+const botLevelSelect = el<HTMLSelectElement>("botLevelSelect");
+const botHelpSelect = el<HTMLSelectElement>("botHelpSelect");
 const capacitySelect = el<HTMLSelectElement>("capacitySelect");
 const difficultySelect = el<HTMLSelectElement>("difficultySelect");
 const codeInput = el<HTMLInputElement>("roomCodeInput");
@@ -232,7 +235,7 @@ function parseRoom(value: unknown): Room | null {
   if (!row || typeof row.product !== "string" || !isMultiplayerProductId(row.product) || !products.includes(row.product) ||
       typeof row.code !== "string" || !/^\d{4,8}$/.test(row.code)) return null;
   const policy = multiplayerConfigForProduct(row.product)!;
-  const capacity = Number(row.capacity) as 2 | 3;
+  const capacity = Number(row.capacity) as number;
   if (!policy.playerCounts.includes(capacity)) return null;
   const inputSeats = Array.isArray(row.seats) ? row.seats : Array.isArray(row.initials) ? row.initials : [];
   const seats = Array.from({ length: capacity }, (_, index): Seat => {
@@ -633,6 +636,9 @@ function updateGameOptions() {
   if (!policy) return;
   capacitySelect.replaceChildren(...policy.playerCounts.map(count => new Option(t("lobby.playersCount", { count }), String(count))));
   difficultySelect.replaceChildren(...policy.difficulties.map((name, index) => new Option(name, String(index))));
+  botCountSelect.replaceChildren(...Array.from({ length: 7 }, (_, i) => new Option(i === 0 ? "\u65e0" : String(i), String(i))));
+  botLevelSelect.replaceChildren(...Array.from({ length: 5 }, (_, i) => { const o = new Option("\u7b49\u7ea7 " + String(i + 1), String(i + 1)); if (i === 2) o.selected = true; return o; }));
+  botHelpSelect.replaceChildren(new Option("\u5f00\u542f", "1"), new Option("\u5173\u95ed", "0"));
   difficultySelect.value = "1";
 }
 function setDialogMode(mode: "create" | "join") {
@@ -723,20 +729,23 @@ el<HTMLFormElement>("roomForm").addEventListener("submit", event => {
     code = String(1000 + random[0] % 9000);
     while (rooms.some(room => room.product === product && room.code === code)) code = String(1000 + (Number(code) - 999) % 9000);
   }
-  const capacity = Number(capacitySelect.value) as 2 | 3;
+  const capacity = Number(capacitySelect.value) as number;
   const difficulty = Number(difficultySelect.value);
   const visibility = el<HTMLSelectElement>("visibilitySelect").value === "private" ? "private" : "public";
   const disableCheatMovement = el<HTMLSelectElement>("cheatSelect").value === "1";
-  afterDialogClose = () => enterRoom(product, code, created, capacity, difficulty, visibility, disableCheatMovement);
+  const botCount = created ? Math.max(0, Math.min(6, Number(botCountSelect.value) || 0)) : 0;
+  const botLevel = Math.max(1, Math.min(5, Number(botLevelSelect.value) || 3));
+  const bots = Array.from({ length: botCount }, () => ({ level: botLevel, helpAlly: botHelpSelect.value !== "0" }));
+  afterDialogClose = () => enterRoom(product, code, created, capacity, difficulty, visibility, disableCheatMovement, bots);
   closeDialog();
 });
 
-function enterRoom(product: MultiplayerProductId, code: string, created: boolean, playerCount?: 2 | 3, difficulty = 1, visibility: "public" | "private" = "public", disableCheatMovement = false) {
+function enterRoom(product: MultiplayerProductId, code: string, created: boolean, playerCount?: number, difficulty = 1, visibility: "public" | "private" = "public", disableCheatMovement = false, bots: { level: number; helpAlly: boolean }[] = []) {
   if (leaving || connection !== "live") return;
   if (mine) { notice(t("lobby.conflict")); return; }
   const policy = multiplayerConfigForProduct(product)!;
   identity.lobbyClientId(product);
-  if (created) sessions.save(product, { room: { code, playerCount: playerCount || policy.playerCounts[0], difficulty, created: true, visibility, disableCheatMovement }, seat: 0, ready: false, spectatorRequested: false, roomSettingsOpen: false });
+  if (created) sessions.save(product, { room: { code, playerCount: playerCount || policy.playerCounts[0], difficulty, created: true, visibility, disableCheatMovement, bots }, seat: 0, ready: false, spectatorRequested: false, roomSettingsOpen: false });
   else sessions.clear(product);
   const url = new URL(launcherUrl);
   url.searchParams.set(ROOM_INVITE_KEY, encodeRoomInvite({
@@ -749,6 +758,7 @@ function enterRoom(product: MultiplayerProductId, code: string, created: boolean
       d: difficulty,
       v: visibility,
       c: disableCheatMovement,
+      b: bots.length > 0 ? bots.map(bot => ({ l: bot.level, h: bot.helpAlly })) : undefined,
     } : {}),
   }));
   leaving = true;
@@ -797,7 +807,7 @@ async function boot() {
     renderFilters();
     gameSelect.replaceChildren(...products.map(product => new Option(titleFor(product), product)));
     updateGameOptions();
-    relay = manifest.shared.netplayRelay || "";
+    relay = effectiveNetplayRelayUrl(manifest.shared.netplayRelay || "");
     if (!relay) { connection = "missing"; render(); return; }
     connect();
   } catch { connection = "offline"; render(); scheduleReconnect(); }

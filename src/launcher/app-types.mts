@@ -27,7 +27,8 @@ export interface MultiplayerLoadout {
 export interface LauncherNetplayState {
   url: string;
   player: number | null;
-  playerCount: 2 | 3;
+  playerCount: number;
+  bots?: { level: number; helpAlly: boolean }[];
   seed: number;
   difficulty: number;
   inputDelay: number;
@@ -72,8 +73,9 @@ export interface MultiplayerRoomState {
   challengeMode?: boolean;
   prankMode?: boolean;
   code: string;
-  playerCount: 2 | 3;
+  playerCount: number;
   difficulty: number;
+  bots?: { level: number; helpAlly: boolean }[];
   inputDelay?: number;
   inputDelayAuto?: boolean;
   predictionReserve?: number;

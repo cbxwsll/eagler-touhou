@@ -31,8 +31,9 @@ export interface NormalizedMultiplayerLobbySnapshot {
   visibility: "public" | "private";
   disableCheatMovement: boolean;
   challengeMode?: boolean;
+  bots?: { level: number; helpAlly: boolean }[];
   prankMode?: boolean;
-  playerCount: 2 | 3;
+  playerCount: number;
   difficulty: number;
   inputDelay: number;
   adonisMode?: number;
@@ -66,15 +67,15 @@ export function normalizeMultiplayerLobbySnapshot(value: unknown, {
   loadouts,
 }: {
   localClientId: string;
-  playerCounts: readonly (2 | 3)[];
+  playerCounts: readonly (number)[];
   difficulties: readonly unknown[];
   loadouts: readonly unknown[];
 }): NormalizedMultiplayerLobbySnapshot | null {
   const source = record(value);
   if (!source) return null;
   const requestedPlayerCount = Number(source.playerCount);
-  if (!playerCounts.includes(requestedPlayerCount as 2 | 3)) return null;
-  const playerCount = requestedPlayerCount as 2 | 3;
+  if (!playerCounts.includes(requestedPlayerCount as number)) return null;
+  const playerCount = requestedPlayerCount as number;
   const difficulty = Math.max(
     0,
     Math.min(Math.max(0, difficulties.length - 1), Number(source.difficulty) || 0),
@@ -143,6 +144,7 @@ export function normalizeMultiplayerLobbySnapshot(value: unknown, {
     visibility: source.visibility === "private" ? "private" : "public",
     disableCheatMovement: source.disableCheatMovement === true,
     ...(source.challengeMode!==undefined?{challengeMode:source.challengeMode===true}:{}),
+    ...(Array.isArray(source.bots)?{bots:source.bots.filter(b=>b&&Number.isInteger(b.level)&&b.level>=1&&b.level<=5).map(b=>({level:b.level,helpAlly:b.helpAlly===true}))}:{}),
     ...(source.prankMode!==undefined?{prankMode:false}:{}),
     difficulty,
     inputDelay,

@@ -168,6 +168,7 @@ import {
   buildMultiplayerDiagnosticRelayUrl,
   buildMultiplayerGameplayRelayUrl,
   buildMultiplayerLobbyRelayUrl,
+  effectiveNetplayRelayUrl,
 } from "./multiplayer-relay-url.mjs";
 import { MultiplayerQuickChat } from "./multiplayer-quick-chat.mjs";
 import { buildMultiplayerRuntimeOptions } from "./multiplayer-runtime-options.mjs";
@@ -253,6 +254,12 @@ import type {
 } from "./touch-layout-model.mjs";
 import type { DirectTouchPoint, DirectTouchType } from "./touch-runtime-protocol.mjs";
 
+// TDZ guard: render()/reset paths can execute before the touch-control
+// wiring section below, so these must be initialized up here.
+let touchFunctionOwner: ReturnType<typeof createFunctionKeyOwner> | null = null;
+let heldTouchFire = false;
+let heldTouchFirePointerId: number | null = null;
+let heldTouchFireKey: Readonly<{ code: string; key: string; keyCode: number }> | null = null;
 type PackageFeatureModule = typeof import("./package-feature.mjs");
 type ReplayFeatureModule = typeof import("./replay-files.mjs");
 type NetworkDiagnosticsModule = typeof import("./network-diagnostics.mjs");
@@ -1526,7 +1533,7 @@ function applyHostManifest(value: unknown) {
   serverResourceMode = manifest.shared?.resourceMode || "hosted";
   importServer = serverResourceMode === "import";
   gameDataFallback = manifest.shared?.gameDataFallback || null;
-  state.netplay.url = typeof manifest.shared?.netplayRelay === "string" ? manifest.shared.netplayRelay : "";
+  state.netplay.url = effectiveNetplayRelayUrl(typeof manifest.shared?.netplayRelay === "string" ? manifest.shared.netplayRelay : "");
   if (mpUiState.room && state.netplay.url) mpReconnectLobbyNow();
   hostManifestAvailable = true;
   renderServerStatusNote();
@@ -1753,13 +1760,13 @@ const state: LauncherState = {
 };
 const productIds = new Set<ProductId>(PRODUCT_IDS);
 const isMultiplayerProduct = (product: ProductId = state.product) => isMultiplayerProductId(product);
-const mpPlayerCounts = (product: ProductId = state.product): readonly (2 | 3)[] =>
+const mpPlayerCounts = (product: ProductId = state.product): readonly (number)[] =>
   multiplayerConfigForProduct(product)?.playerCounts ?? [2];
-const mpDefaultPlayerCount = (product: ProductId = state.product): 2 | 3 => mpPlayerCounts(product)[0] ?? 2;
-const mpNormalizePlayerCount = (value: unknown, product: ProductId = state.product): 2 | 3 => {
+const mpDefaultPlayerCount = (product: ProductId = state.product): number => mpPlayerCounts(product)[0] ?? 2;
+const mpNormalizePlayerCount = (value: unknown, product: ProductId = state.product): number => {
   const allowed = mpPlayerCounts(product);
   const numeric = Number(value);
-  return allowed.includes(numeric as 2 | 3) ? numeric as 2 | 3 : (allowed[0] ?? 2);
+  return allowed.includes(numeric as number) ? numeric as number : (allowed[0] ?? 2);
 };
 const mpDifficultyMax = (product: ProductId = state.product) =>
   Math.max(0, (multiplayerConfigForProduct(product)?.difficulties.length ?? 1) - 1);
@@ -2586,7 +2593,8 @@ function updateNetplayPlayerStatus(net: RuntimeNetplaySnapshot | null) {
     netplayPlayerStatus.replaceChildren();
     return;
   }
-  const playerCount = Math.max(2, Math.min(3, Number(state.netplay.playerCount) || 2));
+  const playerCount = Math.max(2, Number(state.netplay.playerCount) || 2);
+  state.netplay.bots = Array.isArray(state.netplay.bots) ? state.netplay.bots : [];
   const localPlayer = Math.max(0, Math.min(playerCount - 1, Number(state.netplay.player) || 0));
   const rtcPaths = new Map<number, RuntimeNetplayEntry>();
   for (const entry of net.rtcPaths) {
@@ -3764,7 +3772,7 @@ interface LauncherGameView {
   multiplayer?: {
     titleKey: string;
     gameplay: "cooperative" | "versus";
-    playerCounts: readonly (2 | 3)[];
+    playerCounts: readonly (number)[];
     difficulties: readonly string[];
     loadouts: readonly {
       labelKey: string;
@@ -4773,7 +4781,7 @@ function render() {
   $("#touchJoystick").hidden = !(wheelMovement && touchSurfaceVisible);
   $("#touchRestart").hidden = !state.options.restartButtonEnabled;
   $("#touchFunction").hidden = spectatorRuntime || !functionKeyGames.has(state.game);
-  if ($("#touchFunction").hidden || !touchSurfaceVisible || touchLayoutEditing) touchFunctionOwner.cancel();
+  if ($("#touchFunction").hidden || !touchSurfaceVisible || touchLayoutEditing) touchFunctionOwner?.cancel();
   syncDirectTouchSurfaceVisibility();
   renderTouchActionState();
   const thpracControlsVisible = !spectatorRuntime && thpracTouchControlsVisible();
@@ -4816,6 +4824,7 @@ function validatedNetplayOptions() {
     } : {}),
     ...(game().multiplayer?.gameplay==="cooperative"?{challengeMode:state.netplay.challengeMode??false}:{}),
     spectator: state.netplay.spectator === true,
+    bots: state.netplay.bots ?? [],
     spectatorId: state.netplay.spectatorId,
     spectatorCount: state.netplay.spectatorCount,
     iceServers: state.netplay.iceServers,
@@ -5102,7 +5111,7 @@ window.addEventListener("keydown", forwardHostedKeyboard, true);
 window.addEventListener("keyup", forwardHostedKeyboard, true);
 function clearHostedKeyboard() {
   releaseHeldTouchFire();
-  touchFunctionOwner.cancel();
+  touchFunctionOwner?.cancel();
   hostedKeyboard.clear();
   if (!state.launched || !frame.contentWindow) return;
   const context = touchRuntimeMessageContext();
@@ -7557,7 +7566,7 @@ function mpRestoreRoomFromLocation() {
   });
   const requestedCount = invite?.p;
   const createdInDirectory = mpFromDirectory() && invite?.a === "create";
-  const playerCount = saved?.room.playerCount ?? (createdInDirectory && requestedCount !== undefined && mpPlayerCounts(routedProduct).includes(requestedCount as 2 | 3) ? (requestedCount as 2 | 3) : mpDefaultPlayerCount(routedProduct));
+  const playerCount = saved?.room.playerCount ?? (createdInDirectory && requestedCount !== undefined && mpPlayerCounts(routedProduct).includes(requestedCount as number) ? (requestedCount as number) : mpDefaultPlayerCount(routedProduct));
   const difficulty = saved?.room.difficulty ?? (createdInDirectory ? Math.max(0, Math.min((multiplayerConfigForProduct(routedProduct)?.difficulties.length || 1) - 1, Math.trunc(invite?.d ?? 0))) : 1);
   const seat = saved?.seat ?? (createdInDirectory ? 0 : null);
   mpUiState.room = {
@@ -8093,7 +8102,7 @@ function renderMpRoom() {
 
   document.querySelectorAll<HTMLButtonElement>("[data-mp-player-count]").forEach(button => {
     const value = Number(button.dataset.mpPlayerCount);
-    const supported = mpPlayerCounts().includes(value as 2 | 3);
+    const supported = mpPlayerCounts().includes(value as number);
     const selected = value === room.playerCount;
     button.hidden = !supported;
     button.classList.toggle("selected", selected);
@@ -8101,7 +8110,7 @@ function renderMpRoom() {
     button.setAttribute("aria-pressed", String(selected));
   });
   for (const option of $("#mpRoomPlayerCount").options) {
-    const supported = mpPlayerCounts().includes(Number(option.value) as 2 | 3);
+    const supported = mpPlayerCounts().includes(Number(option.value) as number);
     option.disabled = !supported;
     option.hidden = !supported;
   }
@@ -9093,7 +9102,7 @@ touchFocusButton.addEventListener("click", event => {
 
 // Reserved ordinary C control; default behavior is one short pulse per tap.
 const touchFunctionButton = $("#touchFunction");
-const touchFunctionOwner = createFunctionKeyOwner(down => {
+touchFunctionOwner = createFunctionKeyOwner(down => {
   touchFunctionButton.classList.toggle("is-on", down);
   postRuntimeHostedKey(touchRuntimeMessageContext(), functionKeySpec, down);
 });
@@ -9101,45 +9110,42 @@ touchFunctionButton.addEventListener("pointerdown", event => {
   if (iosWebKitTouch || touchLayoutEditing || !state.launched || !state.options.touchEnabled ||
       touchFunctionButton.hidden || (isMultiplayerProduct() && state.netplay.spectator)) return;
   event.preventDefault();
-  if (touchFunctionOwner.down(event.pointerId)) {
+  if (touchFunctionOwner?.down(event.pointerId)) {
     try { touchFunctionButton.setPointerCapture(event.pointerId); } catch {}
   }
 });
 touchFunctionButton.addEventListener("pointerup", event => {
-  if (iosWebKitTouch) return; event.preventDefault(); touchFunctionOwner.up(event.pointerId);
+  if (iosWebKitTouch) return; event.preventDefault(); touchFunctionOwner?.up(event.pointerId);
 });
 for (const type of ["pointercancel", "lostpointercapture"] as const) {
   touchFunctionButton.addEventListener(type, event => {
     if (iosWebKitTouch) return;
     // Normal pointerup already scheduled a sampled release; losing capture
     // after that must not erase a short tap before the game samples it.
-    touchFunctionOwner.lost(event.pointerId);
+    touchFunctionOwner?.lost(event.pointerId);
   });
 }
 touchFunctionButton.addEventListener("touchstart", event => {
   if (!iosWebKitTouch || touchLayoutEditing || !state.launched || !state.options.touchEnabled ||
       touchFunctionButton.hidden || (isMultiplayerProduct() && state.netplay.spectator)) return;
-  event.preventDefault(); touchFunctionOwner.down(event.changedTouches[0].identifier);
+  event.preventDefault(); touchFunctionOwner?.down(event.changedTouches[0].identifier);
 }, { passive: false });
 touchFunctionButton.addEventListener("touchend", event => {
   if (!iosWebKitTouch) return; event.preventDefault();
-  for (const touch of Array.from(event.changedTouches)) touchFunctionOwner.up(touch.identifier);
+  for (const touch of Array.from(event.changedTouches)) touchFunctionOwner?.up(touch.identifier);
 }, { passive: false });
 touchFunctionButton.addEventListener("touchcancel", event => {
   if (!iosWebKitTouch) return;
-  for (const touch of Array.from(event.changedTouches)) touchFunctionOwner.lost(touch.identifier);
+  for (const touch of Array.from(event.changedTouches)) touchFunctionOwner?.lost(touch.identifier);
 });
 touchFunctionButton.addEventListener("click", event => {
   if (event.detail !== 0 || touchLayoutEditing || !state.launched || !state.options.touchEnabled ||
       touchFunctionButton.hidden || (isMultiplayerProduct() && state.netplay.spectator)) return;
-  touchFunctionOwner.down(-1); touchFunctionOwner.up(-1);
+  touchFunctionOwner?.down(-1); touchFunctionOwner?.up(-1);
 });
 
 // Some game Fire controls hold a Runtime key for actions such as charging.
 const touchFireButton = $("#touchFire");
-let heldTouchFire = false;
-let heldTouchFirePointerId: number | null = null;
-let heldTouchFireKey: Readonly<{ code: string; key: string; keyCode: number }> | null = null;
 function usesHeldTouchFire() {
   return PRODUCT_GAMES[state.game].touchFire.mode === "held-key";
 }
@@ -9313,7 +9319,7 @@ function resetTouchJoystick(sync = true) {
   if (sync) queueTouchControlsSync();
 }
 function cancelTransientTouchInput() {
-  touchFunctionOwner.cancel();
+  touchFunctionOwner?.cancel();
   cancelDirectTouches(false);
   resetTouchJoystick(false);
   touchControls.focusEnabled = false;

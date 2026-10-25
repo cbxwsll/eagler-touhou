@@ -69,7 +69,7 @@ const TH09_MULTIPLAYER_DIFFICULTIES = Object.freeze(["Easy", "Normal", "Hard", "
 const TH09_MULTIPLAYER_GLYPHS = Object.freeze(["霊", "魔", "咲", "妖", "鈴", "チ", "リ", "ミ", "て", "幽", "文", "メ", "小", "映", "メ", "ル"]);
 const TH09_MULTIPLAYER_LOADOUTS = Object.freeze(Array.from({ length: 16 }, (_, character) =>
   Object.freeze({ labelKey: `multiplayer.loadout.th09_${character}`, glyph: TH09_MULTIPLAYER_GLYPHS[character], character, shot: 0 })));
-const STANDARD_MULTIPLAYER_PLAYER_COUNTS = Object.freeze([2, 3] as const);
+const STANDARD_MULTIPLAYER_PLAYER_COUNTS = Object.freeze([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const);
 const TOGGLE_TOUCH_FIRE = Object.freeze({ mode: "toggle", labelKey: "touch.tapToggle" } as const);
 const CHARGE_TOUCH_FIRE = Object.freeze({
   mode: "held-key",
@@ -492,7 +492,7 @@ export interface MultiplayerProductConfig {
   titleKey: string;
   gameplay: "cooperative" | "versus";
   inputTiming?: Readonly<{ rollbackLimit: number; sendPredictionLimit?: number; measuredStartup?: boolean; manualDelayLimit?: number }>;
-  playerCounts: readonly (2 | 3)[];
+  playerCounts: readonly number[];
   difficulties: readonly string[];
   loadouts: readonly MultiplayerLoadoutConfig[];
   peerTransportGlobal: string;

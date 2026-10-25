@@ -14,9 +14,10 @@ export interface MultiplayerRoomSessionSnapshot {
     challengeMode?:boolean;
     prankMode?:boolean;
     code: string;
-    playerCount: 2 | 3;
+    playerCount: number;
     difficulty: number;
     created: boolean;
+    bots?: { level: number; helpAlly: boolean }[];
   };
   seat: number | null;
   ready: boolean;
@@ -30,7 +31,7 @@ export interface RestoredMultiplayerRoomSession extends MultiplayerRoomSessionSn
 
 export interface MultiplayerRoomSessionStore {
   save(product: string, snapshot: MultiplayerRoomSessionSnapshot): void;
-  load(input: { product: string; roomCode: string; playerCounts: readonly (2 | 3)[]; difficulties: readonly unknown[] }): RestoredMultiplayerRoomSession | null;
+  load(input: { product: string; roomCode: string; playerCounts: readonly (number)[]; difficulties: readonly unknown[] }): RestoredMultiplayerRoomSession | null;
   clear(product: string): void;
 }
 
@@ -76,7 +77,7 @@ export function createMultiplayerRoomSessionStore({
   const load = ({ product, roomCode, playerCounts, difficulties }: {
     product: string;
     roomCode: string;
-    playerCounts: readonly (2 | 3)[];
+    playerCounts: readonly (number)[];
     difficulties: readonly unknown[];
   }): RestoredMultiplayerRoomSession | null => {
     let parsed: unknown = null;
@@ -87,8 +88,8 @@ export function createMultiplayerRoomSessionStore({
     if (!saved || !room || saved.product !== product || room.code !== roomCode) return null;
 
     const requestedPlayerCount = Number(room.playerCount);
-    const playerCount = playerCounts.includes(requestedPlayerCount as 2 | 3)
-      ? requestedPlayerCount as 2 | 3
+    const playerCount = playerCounts.includes(requestedPlayerCount as number)
+      ? requestedPlayerCount as number
       : (playerCounts[0] ?? 2);
     const difficulty = Math.max(
       0,

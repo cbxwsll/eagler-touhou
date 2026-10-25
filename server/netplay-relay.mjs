@@ -24,8 +24,10 @@ function multiplayerPlayerCounts(policy) {
     ? policy.playerCounts
     : LEGACY_MULTIPLAYER_PLAYER_COUNTS;
 }
+const MAX_DYNAMIC_PLAYERS = Number.parseInt(process.env.EAGLER_NETPLAY_MAX_PLAYERS || '16', 10);
 function validPlayerCount(policy, value) {
-  return Number.isInteger(value) && multiplayerPlayerCounts(policy).includes(value);
+  // 魔改：满 2 人即可开局，人数动态拓宽（2..MAX_DYNAMIC_PLAYERS）。
+  return Number.isInteger(value) && value >= 2 && value <= MAX_DYNAMIC_PLAYERS;
 }
 function defaultPlayerCount(policy) {
   return multiplayerPlayerCounts(policy)[0] ?? 2;
@@ -165,6 +167,7 @@ function getRoom(id, socket) {
         visibility: 'public',
         disableCheatMovement: false,
         challengeMode:false,prankMode:false,
+        bots: undefined,
         inputDelay: 0,
         adonisMode: 0,
         inputDelayAuto: false,
@@ -579,6 +582,7 @@ function handleLobbyConnection(socket, roomId, clientId, memberId, intent, initi
     if (validPlayerCount(room.multiplayer, initialPolicy?.playerCount)) room.lobby.playerCount = initialPolicy.playerCount;
     const difficultyMax = Math.max(0, (room.multiplayer?.difficulties?.length ?? 6) - 1);
     if (Number.isInteger(initialPolicy?.difficulty)) room.lobby.difficulty = Math.max(0, Math.min(difficultyMax, initialPolicy.difficulty));
+  if (Array.isArray(initialPolicy?.bots)) room.lobby.bots = initialPolicy.bots.filter(b => b && Number.isInteger(b.level) && b.level >= 1 && b.level <= 5).slice(0, 14).map(b => ({ level: b.level, helpAlly: b.helpAlly === true }));
   }
   const pendingDisconnect = room.lobbyDisconnectTimers.get(clientId);
   if (pendingDisconnect) {
